@@ -1,4 +1,10 @@
-import React, {useState, useEffect, useCallback, useContext} from 'react';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useContext,
+  useMemo,
+} from 'react';
 import {
   View,
   Text,
@@ -13,6 +19,7 @@ import SunriseDataFetcher from './SunriseDataFetcher';
 import {NativeModules} from 'react-native';
 import {ThemeContext} from './ThemeContext';
 import notifee from '@notifee/react-native';
+import SunriseListItem from './SunriseListItem';
 
 const {AlarmModule} = NativeModules;
 
@@ -25,7 +32,7 @@ const SunriseAlarm = () => {
   const [error, setError] = useState(null);
   const {theme, toggleTheme, isDark} = useContext(ThemeContext);
 
-  const showNotification = async (title, body) => {
+  const showNotification = useCallback(async (title, body) => {
     await notifee.requestPermission();
 
     const channelId = await notifee.createChannel({
@@ -41,7 +48,7 @@ const SunriseAlarm = () => {
         smallIcon: 'ic_launcher',
       },
     });
-  };
+  }, []);
 
   const loadInitialData = useCallback(async () => {
     setIsLoading(true);
@@ -59,16 +66,32 @@ const SunriseAlarm = () => {
         setLocation(newLocation);
         await AsyncStorage.setItem('location', JSON.stringify(newLocation));
       }
+
+      const cachedData = await AsyncStorage.getItem('cachedSunriseData');
+      if (cachedData) {
+        const {data, timestamp} = JSON.parse(cachedData);
+        if (Date.now() - timestamp < 24 * 60 * 60 * 1000) {
+          setOriginalSunrises(processSunriseData(data.sunrises));
+          setTimezone(data.timezone || '');
+          return;
+        }
+      }
+
+      await loadSunriseData();
     } catch (err) {
       showNotification('Error', 'Failed to load initial data: ' + err.message);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [processSunriseData, loadSunriseData, showNotification]);
 
   useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+    const initializeApp = async () => {
+      await loadInitialData();
+      loadSunriseData();
+    };
+    initializeApp();
+  }, [loadInitialData, loadSunriseData]);
 
   const loadSunriseData = useCallback(async () => {
     if (!location) {
@@ -87,6 +110,15 @@ const SunriseAlarm = () => {
         const processedSunrises = processSunriseData(data.sunrises);
         setOriginalSunrises(processedSunrises);
         setTimezone(data.timezone || '');
+
+        await AsyncStorage.setItem(
+          'cachedSunriseData',
+          JSON.stringify({
+            data,
+            timestamp: Date.now(),
+          }),
+        );
+        showNotification('Success', 'Sunrise data loaded successfully');
       } else {
         throw new Error('Invalid sunrise data received');
       }
@@ -97,49 +129,46 @@ const SunriseAlarm = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [location, processSunriseData]);
+  }, [location, processSunriseData, showNotification]);
 
-  useEffect(() => {
-    if (location) {
-      loadSunriseData();
-    }
-  }, [location, loadSunriseData]);
-
-  const processSunriseData = useCallback(sunrises => {
-    return sunrises
-      .map(sunriseData => {
-        try {
-          const [datePart] = sunriseData.date.split('T');
-          const [year, month, day] = datePart.split('-');
-          const [hours, minutes] = sunriseData.sunrise.split(':');
-          const sunriseDate = new Date(
-            year,
-            month - 1,
-            day,
-            parseInt(hours, 10),
-            parseInt(minutes, 10),
-          );
-          if (isNaN(sunriseDate.getTime())) {
+  const processSunriseData = useMemo(
+    () => sunrises => {
+      return sunrises
+        .map(sunriseData => {
+          try {
+            const [datePart] = sunriseData.date.split('T');
+            const [year, month, day] = datePart.split('-');
+            const [hours, minutes] = sunriseData.sunrise.split(':');
+            const sunriseDate = new Date(
+              year,
+              month - 1,
+              day,
+              parseInt(hours, 10),
+              parseInt(minutes, 10),
+            );
+            if (isNaN(sunriseDate.getTime())) {
+              showNotification(
+                'Error',
+                'Invalid date: ' + JSON.stringify(sunriseData),
+              );
+              return null;
+            }
+            return sunriseDate;
+          } catch (err) {
             showNotification(
               'Error',
-              'Invalid date: ' + JSON.stringify(sunriseData),
+              'Error processing sunrise date: ' +
+                JSON.stringify(sunriseData) +
+                ' Error: ' +
+                err.message,
             );
             return null;
           }
-          return sunriseDate;
-        } catch (err) {
-          showNotification(
-            'Error',
-            'Error processing sunrise date: ' +
-              JSON.stringify(sunriseData) +
-              ' Error: ' +
-              error.message,
-          );
-          return null;
-        }
-      })
-      .filter(date => date !== null);
-  }, [error]);
+        })
+        .filter(date => date !== null);
+    },
+    [showNotification],
+  );
 
   const getAdjustedSunrises = () => {
     return originalSunrises
@@ -205,22 +234,6 @@ const SunriseAlarm = () => {
     );
   };
 
-  const handleLocationUpdate = useCallback(
-    async newLocation => {
-      if (!newLocation || !newLocation.latitude || !newLocation.longitude) {
-        showNotification('Error', 'Invalid location');
-        return;
-      }
-      if (JSON.stringify(newLocation) !== JSON.stringify(location)) {
-        setLocation(newLocation);
-        await AsyncStorage.setItem('location', JSON.stringify(newLocation));
-        await SunriseDataFetcher.clearCachedData();
-        loadSunriseData();
-      }
-    },
-    [location, loadSunriseData],
-  );
-
   const handleMinutesOffsetChange = async newOffset => {
     setMinutesOffset(newOffset);
     await AsyncStorage.setItem('minutesOffset', newOffset.toString());
@@ -243,7 +256,7 @@ const SunriseAlarm = () => {
         }`,
       );
     } catch (err) {
-      showNotification('Error', 'Failed to set/update alarm: ' + error.message);
+      showNotification('Error', 'Failed to set/update alarm: ' + err.message);
     }
   };
 
@@ -273,6 +286,38 @@ const SunriseAlarm = () => {
     ];
     return days[dayOfWeek - 1];
   };
+
+  const handleLocationUpdate = useCallback(
+    async newLocation => {
+      if (!newLocation || !newLocation.latitude || !newLocation.longitude) {
+        showNotification('Error', 'Invalid location');
+        return;
+      }
+      if (JSON.stringify(newLocation) !== JSON.stringify(location)) {
+        setLocation(newLocation);
+        showNotification(
+          'Info',
+          'New location set: ' + JSON.stringify(newLocation),
+        );
+        try {
+          await AsyncStorage.setItem('location', JSON.stringify(newLocation));
+          showNotification('Info', 'Location saved to AsyncStorage');
+          await SunriseDataFetcher.clearCachedData();
+          showNotification('Info', 'Cached data cleared');
+          await loadSunriseData();
+          showNotification('Info', 'Sunrise data reloaded');
+        } catch (err) {
+          showNotification(
+            'Error',
+            'Failed to update location: ' + error.message,
+          );
+        }
+      } else {
+        showNotification('Info', 'Location unchanged');
+      }
+    },
+    [location, loadSunriseData, showNotification, error],
+  );
 
   if (isLoading) {
     return (
@@ -316,7 +361,10 @@ const SunriseAlarm = () => {
           Sunrise Alarm
         </Text>
         <View style={styles.timezoneContainer}>
-          <LocationManager onLocationUpdate={handleLocationUpdate} />
+          <LocationManager
+            onLocationUpdate={handleLocationUpdate}
+            showNotification={showNotification}
+          />
           <Text style={[styles.timezoneText, {color: theme.foreground}]}>
             Timezone:{' '}
             <Text style={[styles.timezoneValue, {color: theme.accent}]}>
@@ -325,7 +373,10 @@ const SunriseAlarm = () => {
           </Text>
         </View>
 
-        <TouchableOpacity style={styles.iconButton} onPress={loadSunriseData}>
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={loadSunriseData}
+          accessibilityLabel="Update sunrise data">
           <Text style={[styles.buttonText, {color: theme.foreground}]}>
             Update Sunrises
           </Text>
@@ -334,7 +385,8 @@ const SunriseAlarm = () => {
         <TouchableOpacity
           style={[styles.iconButton, isLoading && styles.disabledButton]}
           onPress={setAllAlarms}
-          disabled={isLoading}>
+          disabled={isLoading}
+          accessibilityLabel="Set all alarms for the week">
           <Text style={[styles.buttonText, {color: theme.foreground}]}>
             Set All Alarms for Week
           </Text>
@@ -361,38 +413,16 @@ const SunriseAlarm = () => {
         <Text style={[styles.sectionTitle, {color: theme.foreground}]}>
           Upcoming Sunrises:
         </Text>
-        {adjustedSunrises.map((sunrise, index) => {
-          const {dayOfWeek, fullDate, time} = formatDate(sunrise);
-          return (
-            <View key={index} style={styles.sunriseItem}>
-              <View style={styles.sunriseInfo}>
-                <View style={styles.dayTimeContainer}>
-                  <Text
-                    style={[
-                      styles.dayText,
-                      {color: theme.foreground},
-                      isToday(sunrise) && {color: theme.accent},
-                    ]}>
-                    {dayOfWeek}
-                  </Text>
-                  <Text style={[styles.timeText, {color: theme.foreground}]}>
-                    {time}
-                    {minutesOffset !== 0 &&
-                      ` (${minutesOffset > 0 ? '+' : ''}${minutesOffset} min)`}
-                  </Text>
-                </View>
-                <Text style={[styles.dateText, {color: theme.foreground}]}>
-                  {fullDate}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.iconButton}
-                onPress={() => setAlarm(sunrise, sunrise.getDay() + 1)}>
-                <Text style={styles.emoji}>🔔</Text>
-              </TouchableOpacity>
-            </View>
-          );
-        })}
+        {adjustedSunrises.map((sunrise, index) => (
+          <SunriseListItem
+            key={index}
+            sunrise={sunrise}
+            onSetAlarm={setAlarm}
+            theme={theme}
+            minutesOffset={minutesOffset}
+            isToday={isToday(sunrise)}
+          />
+        ))}
       </ScrollView>
       <TouchableOpacity style={styles.themeToggle} onPress={toggleTheme}>
         <Text style={styles.emoji}>{isDark ? '☀️' : '🌙'}</Text>
