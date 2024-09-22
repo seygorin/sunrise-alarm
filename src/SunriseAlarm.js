@@ -20,6 +20,7 @@ import {NativeModules} from 'react-native';
 import {ThemeContext} from './ThemeContext';
 import notifee from '@notifee/react-native';
 import SunriseListItem from './SunriseListItem';
+import Footer from './Footer';
 
 const {AlarmModule} = NativeModules;
 
@@ -427,6 +428,7 @@ const SunriseAlarm = () => {
       <TouchableOpacity style={styles.themeToggle} onPress={toggleTheme}>
         <Text style={styles.emoji}>{isDark ? '☀️' : '🌙'}</Text>
       </TouchableOpacity>
+      <Footer />
     </View>
   );
 };
