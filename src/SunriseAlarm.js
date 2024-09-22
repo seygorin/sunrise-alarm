@@ -78,21 +78,20 @@ const SunriseAlarm = () => {
         }
       }
 
-      await loadSunriseData();
+
     } catch (err) {
       showNotification('Error', 'Failed to load initial data: ' + err.message);
     } finally {
       setIsLoading(false);
     }
-  }, [processSunriseData, loadSunriseData, showNotification]);
+  }, [processSunriseData, showNotification]);
 
   useEffect(() => {
     const initializeApp = async () => {
       await loadInitialData();
-      loadSunriseData();
     };
     initializeApp();
-  }, [loadInitialData, loadSunriseData]);
+  }, [loadInitialData]);
 
   const loadSunriseData = useCallback(async () => {
     if (!location) {

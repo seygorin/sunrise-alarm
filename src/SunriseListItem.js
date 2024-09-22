@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
 
 const SunriseListItem = ({
   sunrise,
@@ -42,38 +42,38 @@ const SunriseListItem = ({
       minute: '2-digit',
     });
 
-    return { dayOfWeek, fullDate, time };
+    return {dayOfWeek, fullDate, time};
   };
 
-  const { dayOfWeek, fullDate, time } = formatDate(sunrise);
+  const {dayOfWeek, fullDate, time} = formatDate(sunrise);
 
   return (
     <View style={styles.sunriseItem}>
-      <View style={styles.sunriseInfo}>
-        <View style={styles.dayTimeContainer}>
-          <Text
-            style={[
-              styles.dayText,
-              { color: theme.foreground },
-              isToday && { color: theme.accent },
-            ]}>
-            {dayOfWeek}
-          </Text>
-          <Text style={[styles.timeText, { color: theme.foreground }]}>
-            {time}
-            {minutesOffset !== 0 &&
-              ` (${minutesOffset > 0 ? '+' : ''}${minutesOffset} min)`}
-          </Text>
-        </View>
-        <Text style={[styles.dateText, { color: theme.foreground }]}>
+      <View style={styles.leftContainer}>
+        <Text
+          style={[
+            styles.dayText,
+            {color: theme.foreground},
+            isToday && {color: theme.accent},
+          ]}>
+          {dayOfWeek}
+        </Text>
+        <Text style={[styles.dateText, {color: theme.foreground}]}>
           {fullDate}
         </Text>
+      </View>
+      <View style={styles.rightContainer}>
+        <Text style={[styles.timeText, {color: theme.foreground}]}>{time}</Text>
+        {minutesOffset !== 0 && (
+          <Text style={[styles.offsetText, {color: theme.foreground}]}>
+            {`(${minutesOffset > 0 ? '+' : ''}${minutesOffset} min)`}
+          </Text>
+        )}
       </View>
       <TouchableOpacity
         style={styles.iconButton}
         onPress={() => onSetAlarm(sunrise, sunrise.getDay() + 1)}
-        accessibilityLabel={`Set alarm for ${dayOfWeek}`}
-      >
+        accessibilityLabel={`Set alarm for ${dayOfWeek}`}>
         <Text style={styles.emoji}>🔔</Text>
       </TouchableOpacity>
     </View>
@@ -87,25 +87,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 15,
   },
-  sunriseInfo: {
+  leftContainer: {
     flex: 1,
+    justifyContent: 'center',
   },
-  dayTimeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  rightContainer: {
+    flex: 1,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
     marginRight: 10,
   },
   dayText: {
     fontSize: 18,
     fontWeight: 'bold',
   },
+  dateText: {
+    fontSize: 14,
+  },
   timeText: {
     fontSize: 18,
   },
-  dateText: {
+  offsetText: {
     fontSize: 14,
-    marginTop: 2,
   },
   iconButton: {
     padding: 5,

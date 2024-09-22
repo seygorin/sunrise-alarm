@@ -18,8 +18,8 @@ const Footer = () => {
 const styles = StyleSheet.create({
   footer: {
     position: 'absolute',
-    bottom: 8,
-    right: 8,
+    bottom: 12,
+    right: 12,
   },
   link: {
     fontSize: 12,
