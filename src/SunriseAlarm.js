@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
@@ -13,6 +12,7 @@ import LocationManager from './LocationManager';
 import SunriseDataFetcher from './SunriseDataFetcher';
 import {NativeModules} from 'react-native';
 import {ThemeContext} from './ThemeContext';
+import notifee from '@notifee/react-native';
 
 const {AlarmModule} = NativeModules;
 
@@ -25,7 +25,26 @@ const SunriseAlarm = () => {
   const [error, setError] = useState(null);
   const {theme, toggleTheme, isDark} = useContext(ThemeContext);
 
+  const showNotification = async (title, body) => {
+    await notifee.requestPermission();
+
+    const channelId = await notifee.createChannel({
+      id: 'default',
+      name: 'Default Channel',
+    });
+
+    await notifee.displayNotification({
+      title,
+      body,
+      android: {
+        channelId,
+        smallIcon: 'ic_launcher',
+      },
+    });
+  };
+
   const loadInitialData = useCallback(async () => {
+    setIsLoading(true);
     try {
       const savedOffset = await AsyncStorage.getItem('minutesOffset');
       if (savedOffset !== null) {
@@ -35,10 +54,15 @@ const SunriseAlarm = () => {
       const savedLocation = await AsyncStorage.getItem('location');
       if (savedLocation !== null) {
         setLocation(JSON.parse(savedLocation));
+      } else {
+        const newLocation = await LocationManager.getCurrentLocation();
+        setLocation(newLocation);
+        await AsyncStorage.setItem('location', JSON.stringify(newLocation));
       }
-    } catch (error) {
-      console.error('Error loading initial data:', error);
-      setError('Failed to load initial data');
+    } catch (err) {
+      showNotification('Error', 'Failed to load initial data: ' + err.message);
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
@@ -48,20 +72,17 @@ const SunriseAlarm = () => {
 
   const loadSunriseData = useCallback(async () => {
     if (!location) {
-      console.log('Location not available, skipping sunrise data fetch');
-      setIsLoading(false);
+      showNotification(
+        'Info',
+        'Location not available, skipping sunrise data fetch',
+      );
       return;
     }
 
-//    setIsLoading(true);
+    setIsLoading(true);
     setError(null);
     try {
-      console.log(
-        'Loading sunrise data for location:',
-        JSON.stringify(location),
-      );
       const data = await SunriseDataFetcher.fetchSunriseData(location);
-      console.log('Received sunrise data:', JSON.stringify(data));
       if (data && data.sunrises && data.sunrises.length > 0) {
         const processedSunrises = processSunriseData(data.sunrises);
         setOriginalSunrises(processedSunrises);
@@ -69,14 +90,14 @@ const SunriseAlarm = () => {
       } else {
         throw new Error('Invalid sunrise data received');
       }
-    } catch (error) {
-      console.error('Error loading sunrise data:', error.message, error.stack);
-      setError('Failed to load sunrise data: ' + error.message);
-      Alert.alert('Error', 'Failed to load sunrise data: ' + error.message);
+    } catch (err) {
+      const errorMessage = 'Failed to load sunrise data: ' + err.message;
+      showNotification('Error', errorMessage);
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
-  }, [location]);
+  }, [location, processSunriseData]);
 
   useEffect(() => {
     if (location) {
@@ -84,43 +105,50 @@ const SunriseAlarm = () => {
     }
   }, [location, loadSunriseData]);
 
-  const processSunriseData = sunrises => {
+  const processSunriseData = useCallback(sunrises => {
     return sunrises
       .map(sunriseData => {
         try {
-          const [datePart, timePart] = sunriseData.date.split('T');
+          const [datePart] = sunriseData.date.split('T');
           const [year, month, day] = datePart.split('-');
           const [hours, minutes] = sunriseData.sunrise.split(':');
           const sunriseDate = new Date(
             year,
             month - 1,
             day,
-            parseInt(hours),
-            parseInt(minutes),
+            parseInt(hours, 10),
+            parseInt(minutes, 10),
           );
           if (isNaN(sunriseDate.getTime())) {
-            console.error('Invalid date:', sunriseData);
+            showNotification(
+              'Error',
+              'Invalid date: ' + JSON.stringify(sunriseData),
+            );
             return null;
           }
           return sunriseDate;
-        } catch (error) {
-          console.error(
-            'Error processing sunrise date:',
-            sunriseData,
-            'Error:',
-            error.message,
+        } catch (err) {
+          showNotification(
+            'Error',
+            'Error processing sunrise date: ' +
+              JSON.stringify(sunriseData) +
+              ' Error: ' +
+              error.message,
           );
           return null;
         }
       })
       .filter(date => date !== null);
-  };
+  }, [error]);
 
   const getAdjustedSunrises = () => {
     return originalSunrises
       .map(sunrise => {
         if (!(sunrise instanceof Date)) {
-          console.error('Invalid sunrise date:', sunrise);
+          showNotification(
+            'Error',
+            'Invalid sunrise date: ' + JSON.stringify(sunrise),
+          );
           return null;
         }
         const adjustedTime = new Date(
@@ -180,16 +208,17 @@ const SunriseAlarm = () => {
   const handleLocationUpdate = useCallback(
     async newLocation => {
       if (!newLocation || !newLocation.latitude || !newLocation.longitude) {
-        console.error('Invalid location:', newLocation);
+        showNotification('Error', 'Invalid location');
         return;
       }
       if (JSON.stringify(newLocation) !== JSON.stringify(location)) {
         setLocation(newLocation);
         await AsyncStorage.setItem('location', JSON.stringify(newLocation));
         await SunriseDataFetcher.clearCachedData();
+        loadSunriseData();
       }
     },
-    [location],
+    [location, loadSunriseData],
   );
 
   const handleMinutesOffsetChange = async newOffset => {
@@ -199,7 +228,7 @@ const SunriseAlarm = () => {
 
   const setAlarm = async (sunriseTime, dayOfWeek) => {
     const alarmTime = new Date(sunriseTime.getTime() + minutesOffset * 60000);
-    const message = `Sunrise Alarm ${dayOfWeek}`;
+    const message = `Sunrise Alarm ${getDayName(dayOfWeek)}`;
     try {
       await AlarmModule.setAlarm(
         alarmTime.getHours(),
@@ -207,14 +236,14 @@ const SunriseAlarm = () => {
         dayOfWeek,
         message,
       );
-      console.log(
+      showNotification(
+        'Success',
         `Alarm set/updated for ${alarmTime.toLocaleTimeString()} on ${
           formatDate(alarmTime).fullDate
         }`,
       );
-    } catch (error) {
-      console.error('Error setting/updating alarm:', error);
-      Alert.alert('Error', 'Failed to set/update alarm');
+    } catch (err) {
+      showNotification('Error', 'Failed to set/update alarm: ' + error.message);
     }
   };
 
@@ -222,11 +251,27 @@ const SunriseAlarm = () => {
     const adjustedSunrises = getAdjustedSunrises();
 
     for (let i = 0; i < adjustedSunrises.length; i++) {
-      const dayOfWeek = (i + 1) % 7;
-      await setAlarm(adjustedSunrises[i], dayOfWeek === 0 ? 7 : dayOfWeek);
+      const dayOfWeek = ((i + 1) % 7) + 1;
+      await setAlarm(adjustedSunrises[i], dayOfWeek);
     }
 
-    Alert.alert('Success', 'All alarms for the week have been set/updated.');
+    showNotification(
+      'Success',
+      'All alarms for the week have been set/updated.',
+    );
+  };
+
+  const getDayName = dayOfWeek => {
+    const days = [
+      'Sunday',
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+    ];
+    return days[dayOfWeek - 1];
   };
 
   if (isLoading) {
@@ -466,7 +511,7 @@ const styles = StyleSheet.create({
   offsetValue: {
     fontSize: 18,
     fontWeight: 'bold',
-		marginLeft: -1,
+    marginLeft: -1,
     marginHorizontal: 10,
   },
 });
