@@ -1,4 +1,4 @@
-package com.myapp
+package com.sunrisealarmseygorinapp
 
 import android.content.Context
 import android.content.Intent
