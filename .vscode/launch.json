@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+		
+
+    {
+      "name": "Debug Android (Wifi)",
+      "cwd": "${workspaceFolder}",
+      "type": "reactnative",
+      "request": "launch",
+      "platform": "android",
+      "port": 8081,
+      "sourceMaps": true,
+      "outDir": "${workspaceRoot}/.vscode/.react"
+    }
+  ]
+}
