@@ -77,8 +77,6 @@ const SunriseAlarm = () => {
           return;
         }
       }
-
-
     } catch (err) {
       showNotification('Error', 'Failed to load initial data: ' + err.message);
     } finally {
@@ -236,42 +234,57 @@ const SunriseAlarm = () => {
 
   const handleMinutesOffsetChange = async newOffset => {
     setMinutesOffset(newOffset);
-    await AsyncStorage.setItem('minutesOffset', newOffset.toString());
+    try {
+      await AsyncStorage.setItem('minutesOffset', newOffset.toString());
+    } catch (error) {
+      showNotification(
+        'Error',
+        'Failed to save minutes offset: ' + error.message,
+      );
+    }
   };
 
   const setAlarm = async (sunriseTime, dayOfWeek) => {
+    const androidDayOfWeek = dayOfWeek;
+
     const alarmTime = new Date(sunriseTime.getTime() + minutesOffset * 60000);
-    const message = `Sunrise Alarm ${getDayName(dayOfWeek)}`;
+    const hours = alarmTime.getHours();
+    const minutes = alarmTime.getMinutes();
+
+    const message = `Sunrise Alarm ${getDayName(androidDayOfWeek)}`;
     try {
-      await AlarmModule.setAlarm(
-        alarmTime.getHours(),
-        alarmTime.getMinutes(),
-        dayOfWeek,
-        message,
-      );
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await AlarmModule.setAlarm(hours, minutes, androidDayOfWeek, message);
       showNotification(
         'Success',
-        `Alarm set/updated for ${alarmTime.toLocaleTimeString()} on ${
+        `Alarm set for ${alarmTime.toLocaleTimeString()} on ${
           formatDate(alarmTime).fullDate
         }`,
       );
     } catch (err) {
-      showNotification('Error', 'Failed to set/update alarm: ' + err.message);
+      showNotification('Error', 'Failed to set alarm: ' + err.message);
     }
   };
 
   const setAllAlarms = async () => {
     const adjustedSunrises = getAdjustedSunrises();
+    console.log('Setting alarms for', adjustedSunrises.length, 'days');
 
-    for (let i = 0; i < adjustedSunrises.length; i++) {
-      const dayOfWeek = ((i + 1) % 7) + 1;
-      await setAlarm(adjustedSunrises[i], dayOfWeek);
+    try {
+      for (let i = 0; i < 7; i++) {
+        const sunriseTime = new Date(adjustedSunrises[i]);
+        const dayOfWeek = i + 1;
+
+        console.log(`Setting alarm ${i + 1}/7 for ${getDayName(dayOfWeek)}`);
+        await setAlarm(sunriseTime, dayOfWeek);
+      }
+
+      console.log('Successfully set all alarms');
+      showNotification('Success', 'All alarms for the week have been set.');
+    } catch (err) {
+      console.error('Failed to set alarms:', err);
+      showNotification('Error', 'Failed to set alarms: ' + err.message);
     }
-
-    showNotification(
-      'Success',
-      'All alarms for the week have been set/updated.',
-    );
   };
 
   const getDayName = dayOfWeek => {

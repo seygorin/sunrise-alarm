@@ -1,4 +1,3 @@
-import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = 'https://api.sunrisesunset.io/json';
@@ -33,18 +32,25 @@ const SunriseDataFetcher = {
       console.log('Fetching sunrise for date:', formattedDate, 'URL:', url);
 
       try {
-        const response = await axios.get(url);
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
         console.log(
           'Response for date',
           formattedDate,
           ':',
-          JSON.stringify(response.data),
+          JSON.stringify(data),
         );
-        if (response.data && response.data.results) {
-          sunrises.push(response.data.results);
+
+        if (data && data.results) {
+          sunrises.push(data.results);
         } else {
           throw new Error('Invalid response data');
         }
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (error) {
         console.error(
           'Error fetching sunrise for date:',
@@ -60,7 +66,11 @@ const SunriseDataFetcher = {
       throw new Error('No sunrise data received');
     }
 
-    const data = {sunrises, timezone: sunrises[0].timezone};
+    const data = {
+      sunrises,
+      timezone: sunrises[0].timezone,
+      timestamp: new Date().getTime(),
+    };
     console.log('Fetched new data:', JSON.stringify(data));
 
     await this.cacheData(data);
@@ -79,7 +89,16 @@ const SunriseDataFetcher = {
     try {
       const cachedData = await AsyncStorage.getItem('sunriseData');
       if (cachedData) {
-        return JSON.parse(cachedData);
+        const data = JSON.parse(cachedData);
+
+        if (
+          data.timestamp &&
+          new Date().getTime() - data.timestamp < 24 * 60 * 60 * 1000
+        ) {
+          return data;
+        }
+
+        await this.clearCachedData();
       }
     } catch (error) {
       console.error('Error retrieving cached data:', error);
