@@ -1,15 +1,31 @@
 import React, {useState} from 'react';
-import {View, TextInput, TouchableOpacity, Text, StyleSheet} from 'react-native';
+import {
+  View,
+  TextInput,
+  TouchableOpacity,
+  Text,
+  StyleSheet,
+} from 'react-native';
+import {showNotification} from './NotificationManager';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LocationInput = ({onLocationSubmit, theme}) => {
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const lat = parseFloat(latitude);
     const lon = parseFloat(longitude);
     if (!isNaN(lat) && !isNaN(lon)) {
-      onLocationSubmit({latitude: lat, longitude: lon});
+      const newLocation = {latitude: lat, longitude: lon};
+
+      try {
+        await AsyncStorage.setItem('userLocation', JSON.stringify(newLocation));
+      } catch (error) {
+        showNotification('Error', 'Failed to save location');
+      }
+
+      onLocationSubmit(newLocation);
       setLatitude('');
       setLongitude('');
     }
@@ -18,7 +34,10 @@ const LocationInput = ({onLocationSubmit, theme}) => {
   return (
     <View style={styles.container}>
       <TextInput
-        style={[styles.input, {color: theme.foreground, borderColor: theme.foreground}]}
+        style={[
+          styles.input,
+          {color: theme.foreground, borderColor: theme.foreground},
+        ]}
         placeholder="Latitude"
         placeholderTextColor={theme.foreground}
         value={latitude}
@@ -26,7 +45,10 @@ const LocationInput = ({onLocationSubmit, theme}) => {
         keyboardType="numeric"
       />
       <TextInput
-        style={[styles.input, {color: theme.foreground, borderColor: theme.foreground}]}
+        style={[
+          styles.input,
+          {color: theme.foreground, borderColor: theme.foreground},
+        ]}
         placeholder="Longitude"
         placeholderTextColor={theme.foreground}
         value={longitude}

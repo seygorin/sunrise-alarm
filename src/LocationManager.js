@@ -1,18 +1,11 @@
-import React, {useEffect, useCallback} from 'react';
+import React, {useEffect, useCallback, useState} from 'react';
 import {TouchableOpacity, Text, StyleSheet} from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
 import {PermissionsAndroid} from 'react-native';
-
-const DEFAULT_LOCATION = {latitude: 51.4769, longitude: 0.0005};
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LocationManager = ({onLocationUpdate, showNotification}) => {
-  const safeShowNotification = useCallback((title, message) => {
-    if (typeof showNotification === 'function') {
-      showNotification(title, message);
-    } else {
-      console.warn('showNotification is not a function', { title, message });
-    }
-  }, [showNotification]);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   const requestLocationPermission = useCallback(async () => {
     try {
@@ -21,58 +14,118 @@ const LocationManager = ({onLocationUpdate, showNotification}) => {
       );
       return granted === PermissionsAndroid.RESULTS.GRANTED;
     } catch (err) {
-      safeShowNotification('Error', 'Failed to request location permission: ' + err.message);
+      showNotification(
+        'Error',
+        'Failed to request location permission: ' + err.message,
+      );
       return false;
     }
-  }, [safeShowNotification]);
+  }, [showNotification]);
 
   const getLocation = useCallback(() => {
     return new Promise((resolve, reject) => {
       Geolocation.getCurrentPosition(
         position => {
+          if (!position?.coords?.latitude || !position?.coords?.longitude) {
+            reject(new Error('Invalid position data received'));
+            return;
+          }
           resolve({
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
           });
         },
         error => {
-          safeShowNotification('Error', 'Error getting location: ' + error.message);
-          reject(error);
+          reject(new Error(error?.message || 'Failed to get location'));
         },
         {enableHighAccuracy: true, timeout: 15000, maximumAge: 10000},
       );
     });
-  }, [safeShowNotification]);
+  }, []);
 
   const updateLocation = useCallback(async () => {
     try {
       const hasPermission = await requestLocationPermission();
       if (!hasPermission) {
-        safeShowNotification(
-          'Info',
-          'Location permission not granted. Using default location.',
-        );
-        onLocationUpdate(DEFAULT_LOCATION);
+        showNotification('Error', 'Location permission denied');
         return;
       }
 
       const newLocation = await getLocation();
+      await AsyncStorage.setItem('userLocation', JSON.stringify(newLocation));
+      showNotification('Success', 'Location updated');
       onLocationUpdate(newLocation);
-      safeShowNotification('Success', 'Location updated successfully');
     } catch (error) {
-      safeShowNotification(
-        'Error',
-        'Failed to get location. Using default location.',
-      );
-      onLocationUpdate(DEFAULT_LOCATION);
+      showNotification('Error', 'Failed to get location');
     }
-  }, [onLocationUpdate, safeShowNotification, getLocation, requestLocationPermission]);
+  }, [
+    getLocation,
+    onLocationUpdate,
+    requestLocationPermission,
+    showNotification,
+  ]);
 
   useEffect(() => {
-    updateLocation().catch(error => {
-      safeShowNotification('Error', 'Failed to update location: ' + error.message);
-    });
-  }, [updateLocation, safeShowNotification]);
+    const initializeLocation = async () => {
+      if (isInitialized) return;
+
+      try {
+        const hasPermission = await requestLocationPermission();
+        if (!hasPermission) {
+          const savedLocation = await AsyncStorage.getItem('userLocation');
+          if (savedLocation) {
+            onLocationUpdate(JSON.parse(savedLocation));
+          }
+          setIsInitialized(true);
+          return;
+        }
+
+        try {
+          const currentLocation = await getLocation();
+
+          await AsyncStorage.setItem(
+            'userLocation',
+            JSON.stringify(currentLocation),
+          );
+          onLocationUpdate(currentLocation);
+          setIsInitialized(true);
+        } catch (locationError) {
+          showNotification(
+            'Error',
+            'Failed to get fresh location: ' + locationError.message,
+          );
+
+          const savedLocation = await AsyncStorage.getItem('userLocation');
+          if (savedLocation) {
+            onLocationUpdate(JSON.parse(savedLocation));
+          }
+          setIsInitialized(true);
+        }
+      } catch (error) {
+        showNotification('Error', 'Init error: ' + error.message);
+        setIsInitialized(true);
+      }
+    };
+
+    const clearSavedLocation = async () => {
+      try {
+        await AsyncStorage.removeItem('userLocation');
+      } catch (error) {
+        showNotification(
+          'Error',
+          'Failed to clear saved location: ' + error.message,
+        );
+      }
+    };
+
+    clearSavedLocation().then(() => initializeLocation());
+  }, [
+    isInitialized,
+    onLocationUpdate,
+    getLocation,
+    requestLocationPermission,
+    showNotification,
+  ]);
 
   return (
     <TouchableOpacity style={styles.iconButton} onPress={updateLocation}>
