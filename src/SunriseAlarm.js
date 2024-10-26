@@ -10,8 +10,9 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   ScrollView,
+  ActivityIndicator,
+  Modal,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LocationManager from './LocationManager';
@@ -21,6 +22,7 @@ import {ThemeContext} from './ThemeContext';
 import notifee from '@notifee/react-native';
 import SunriseListItem from './SunriseListItem';
 import Footer from './Footer';
+import RainbowText from './RainbowText';
 
 const {AlarmModule} = NativeModules;
 
@@ -31,6 +33,9 @@ const SunriseAlarm = () => {
   const [timezone, setTimezone] = useState('');
   const [error, setError] = useState(null);
   const {theme, toggleTheme, isDark} = useContext(ThemeContext);
+
+  // Определяем isLoading на основе timezone
+  const isLoading = !timezone || timezone === 'Not set';
 
   const showNotification = useCallback(async (title, body) => {
     await notifee.requestPermission();
@@ -79,6 +84,7 @@ const SunriseAlarm = () => {
         return;
       }
 
+      setTimezone(''); // Сбрасываем timezone перед загрузкой
       try {
         const data = await SunriseDataFetcher.fetchSunriseData(
           location,
@@ -334,28 +340,6 @@ const SunriseAlarm = () => {
     showNotification('Success', 'Sunrise data refreshed');
   };
 
-  if (!location) {
-    return (
-      <View
-        style={[
-          styles.container,
-          styles.centerContainer,
-          {backgroundColor: theme.background},
-        ]}>
-        <View style={styles.loadingWrapper}>
-          <ActivityIndicator
-            size="large"
-            color={theme.accent}
-            style={styles.indicator}
-          />
-          <Text style={[styles.loadingText, {color: theme.foreground}]}>
-            Getting your location...
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
   if (error) {
     return (
       <View
@@ -379,79 +363,96 @@ const SunriseAlarm = () => {
   const adjustedSunrises = getAdjustedSunrises();
 
   return (
-    <View style={styles.container}>
-      <ScrollView style={styles.scrollView}>
-        <Text style={[styles.title, {color: theme.foreground}]}>
-          Sunrise Alarm
-        </Text>
-        <View style={styles.timezoneContainer}>
-          <LocationManager
-            onLocationUpdate={handleLocationUpdate}
-            showNotification={showNotification}
-          />
-          <Text style={[styles.timezoneText, {color: theme.foreground}]}>
-            Timezone:{' '}
-            <Text style={[styles.timezoneValue, {color: theme.accent}]}>
-              {timezone || 'Not set'}
+    <>
+      <View style={styles.container}>
+        <ScrollView style={styles.scrollView}>
+          <Text style={[styles.title, {color: theme.foreground}]}>
+            Sunrise Alarm
+          </Text>
+          <View style={styles.timezoneContainer}>
+            <LocationManager
+              onLocationUpdate={handleLocationUpdate}
+              showNotification={showNotification}
+            />
+            <Text style={[styles.timezoneText, {color: theme.foreground}]}>
+              Timezone:{' '}
+              <Text style={[styles.timezoneValue, {color: theme.accent}]}>
+                {timezone || 'Not set'}
+              </Text>
             </Text>
-          </Text>
-        </View>
+          </View>
 
-        <TouchableOpacity
-          style={styles.iconButton}
-          onPress={handleRefresh}
-          accessibilityLabel="Update sunrise data">
-          <Text style={[styles.buttonText, {color: theme.foreground}]}>
-            Update Sunrises
-          </Text>
-          <Text style={styles.emoji}>🔄</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.iconButton}
-          onPress={setAllAlarms}
-          accessibilityLabel="Set all alarms for the week">
-          <Text style={[styles.buttonText, {color: theme.foreground}]}>
-            Set All Alarms for Week
-          </Text>
-          <Text style={styles.emoji}>⏰</Text>
-        </TouchableOpacity>
-
-        <View style={styles.offsetContainer}>
-          <Text style={[styles.offsetText, {color: theme.foreground}]}>
-            Minutes offset:
-          </Text>
           <TouchableOpacity
-            onPress={() => handleMinutesOffsetChange(minutesOffset - 5)}>
-            <Text style={styles.emoji}>⬅️</Text>
+            style={styles.iconButton}
+            onPress={handleRefresh}
+            accessibilityLabel="Update sunrise data">
+            <Text style={[styles.buttonText, {color: theme.foreground}]}>
+              Update Sunrises
+            </Text>
+            <Text style={styles.emoji}>🔄</Text>
           </TouchableOpacity>
-          <Text style={[styles.offsetValue, {color: theme.foreground}]}>
-            {minutesOffset}
-          </Text>
           <TouchableOpacity
-            onPress={() => handleMinutesOffsetChange(minutesOffset + 5)}>
-            <Text style={styles.emoji}>➡️</Text>
+            style={styles.iconButton}
+            onPress={setAllAlarms}
+            accessibilityLabel="Set all alarms for the week">
+            <Text style={[styles.buttonText, {color: theme.foreground}]}>
+              Set All Alarms for Week
+            </Text>
+            <Text style={styles.emoji}>⏰</Text>
           </TouchableOpacity>
-        </View>
 
-        <Text style={[styles.sectionTitle, {color: theme.foreground}]}>
-          Upcoming Sunrises:
-        </Text>
-        {adjustedSunrises.map((sunrise, index) => (
-          <SunriseListItem
-            key={index}
-            sunrise={sunrise}
-            onSetAlarm={setAlarm}
-            theme={theme}
-            minutesOffset={minutesOffset}
-            isToday={isToday(sunrise)}
+          <View style={styles.offsetContainer}>
+            <Text style={[styles.offsetText, {color: theme.foreground}]}>
+              Minutes offset:
+            </Text>
+            <TouchableOpacity
+              onPress={() => handleMinutesOffsetChange(minutesOffset - 5)}>
+              <Text style={styles.emoji}>⬅️</Text>
+            </TouchableOpacity>
+            <Text style={[styles.offsetValue, {color: theme.foreground}]}>
+              {minutesOffset}
+            </Text>
+            <TouchableOpacity
+              onPress={() => handleMinutesOffsetChange(minutesOffset + 5)}>
+              <Text style={styles.emoji}>➡️</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={[styles.sectionTitle, {color: theme.foreground}]}>
+            Upcoming Sunrises:
+          </Text>
+          {adjustedSunrises.map((sunrise, index) => (
+            <SunriseListItem
+              key={index}
+              sunrise={sunrise}
+              onSetAlarm={setAlarm}
+              theme={theme}
+              minutesOffset={minutesOffset}
+              isToday={isToday(sunrise)}
+            />
+          ))}
+        </ScrollView>
+      </View>
+
+      <Modal
+        transparent={true}
+        animationType="fade"
+        visible={isLoading}
+        onRequestClose={() => {}}>
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={theme.accent} />
+          <RainbowText
+            text="Loading sunrise data..."
+            style={styles.loadingText}
           />
-        ))}
-      </ScrollView>
+        </View>
+      </Modal>
+
       <TouchableOpacity style={styles.themeToggle} onPress={toggleTheme}>
         <Text style={styles.emoji}>{isDark ? '☀️' : '🌙'}</Text>
       </TouchableOpacity>
       <Footer />
-    </View>
+    </>
   );
 };
 
@@ -571,9 +572,27 @@ const styles = StyleSheet.create({
   indicator: {
     marginBottom: 10,
   },
+  loadingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  textContainer: {
+    marginTop: 10,
+  },
+  gradientText: {
+    backgroundColor: 'transparent',
+  },
   loadingText: {
-    fontSize: 16,
+    fontSize: 20,
+    fontWeight: 'bold',
     textAlign: 'center',
+    marginTop: 10,
+    // Добавляем тень для лучшей читаемости
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: {width: 1, height: 1},
+    textShadowRadius: 2,
   },
 });
 

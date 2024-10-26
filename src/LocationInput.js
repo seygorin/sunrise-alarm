@@ -6,10 +6,9 @@ import {
   Text,
   StyleSheet,
 } from 'react-native';
-import {showNotification} from './NotificationManager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const LocationInput = ({onLocationSubmit, theme}) => {
+const LocationInput = ({onLocationSubmit, theme, showNotification}) => {
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
 
