@@ -178,9 +178,10 @@ const SunriseAlarm = () => {
           );
           return null;
         }
-        const adjustedTime = new Date(
-          sunrise.getTime() + minutesOffset * 60000,
-        );
+
+        const adjustedTime = new Date(sunrise);
+
+        adjustedTime.setMinutes(adjustedTime.getMinutes() + minutesOffset);
         return adjustedTime;
       })
       .filter(date => date !== null);
@@ -247,7 +248,7 @@ const SunriseAlarm = () => {
   const setAlarm = async (sunriseTime, dayOfWeek) => {
     const androidDayOfWeek = dayOfWeek;
 
-    const alarmTime = new Date(sunriseTime.getTime() + minutesOffset * 60000);
+    const alarmTime = new Date(sunriseTime);
     const hours = alarmTime.getHours();
     const minutes = alarmTime.getMinutes();
 
